@@ -336,6 +336,43 @@ def create_test_dataloader(
     )
 
 
+def create_backtest_dataloader(
+        config: PretrainedConfig,
+        freq,
+        data,
+        batch_size: int,
+        **kwargs,
+):
+    PREDICTION_INPUT_NAMES = [
+        "past_time_features",
+        "past_values",
+        "past_observed_mask",
+        "future_time_features",
+    ]
+    if config.num_static_categorical_features > 0:
+        PREDICTION_INPUT_NAMES.append("static_categorical_features")
+
+    if config.num_static_real_features > 0:
+        PREDICTION_INPUT_NAMES.append("static_real_features")
+
+    transformation = create_transformation(freq, config)
+    transformed_data = transformation.apply(data, is_train=True)
+
+    # we create a Test Instance splitter which will sample the very last
+    # context window seen during training only for the encoder.
+    instance_sampler = create_instance_splitter(config, "validation")
+
+    # we apply the transformations in train mode
+    backtesting_instances = instance_sampler.apply(transformed_data, is_train=True)
+
+    return as_stacked_batches(
+        backtesting_instances,
+        batch_size=batch_size,
+        output_type=torch.tensor,
+        field_names=PREDICTION_INPUT_NAMES,
+    )
+
+
 def plot(ts_index, ts, path):
     fig, ax = plt.subplots()
 
@@ -404,6 +441,9 @@ if __name__ == '__main__':
         # we have a single static categorical feature, namely time series ID:
         num_static_categorical_features=1,
 
+        # we have a single static categorical feature, namely time series ID:
+        num_dynamic_real_features=3,
+
         # it has 366 possible values:
         cardinality=[len(train_dataset)],
 
@@ -411,16 +451,16 @@ if __name__ == '__main__':
         embedding_dimension=[1],
 
         # transformer params:
-        encoder_layers=2,
-        decoder_layers=2,
-        d_model=16,
+        encoder_layers=4,
+        decoder_layers=4,
+        d_model=32,
     )
 
     training_config = {
-        "learning_rate": 6e-4,
+        "learning_rate": 4e-4,
         "architecture": "time-series-transformer",
         "dataset": "fx-nations",
-        "epochs": 100,
+        "epochs": 120,
         "batch_size": 128,
         "wandb": True,
         "num_batches_per_epoch": 200,
@@ -444,7 +484,7 @@ if __name__ == '__main__':
         num_batches_per_epoch=training_config["num_batches_per_epoch"],
     )
 
-    test_dataloader = create_test_dataloader(
+    test_dataloader = create_backtest_dataloader(
         config=config,
         freq=freq,
         data=test_dataset,
@@ -489,9 +529,9 @@ if __name__ == '__main__':
                 static_real_features=batch["static_real_features"].to(device)
                 if config.num_static_real_features > 0
                 else None,
-                past_time_features=batch["past_time_features"].to(device),
+                past_time_features=batch["past_time_features"].float().to(device),
                 past_values=batch["past_values"].to(device),
-                future_time_features=batch["future_time_features"].to(device),
+                future_time_features=batch["future_time_features"].float().to(device),
                 future_values=batch["future_values"].to(device),
                 past_observed_mask=batch["past_observed_mask"].to(device),
                 future_observed_mask=batch["future_observed_mask"].to(device),
@@ -514,9 +554,9 @@ if __name__ == '__main__':
                 static_real_features=batch["static_real_features"].to(device)
                 if config.num_static_real_features > 0
                 else None,
-                past_time_features=batch["past_time_features"].to(device),
+                past_time_features=batch["past_time_features"].float().to(device),
                 past_values=batch["past_values"].to(device),
-                future_time_features=batch["future_time_features"].to(device),
+                future_time_features=batch["future_time_features"].float().to(device),
                 future_values=batch["future_values"].to(device),
                 past_observed_mask=batch["past_observed_mask"].to(device),
                 future_observed_mask=batch["future_observed_mask"].to(device),
@@ -553,9 +593,9 @@ if __name__ == '__main__':
             static_real_features=batch["static_real_features"].to(device)
             if config.num_static_real_features > 0
             else None,
-            past_time_features=batch["past_time_features"].to(device),
+            past_time_features=batch["past_time_features"].float().to(device),
             past_values=batch["past_values"].to(device),
-            future_time_features=batch["future_time_features"].to(device),
+            future_time_features=batch["future_time_features"].float().to(device),
             past_observed_mask=batch["past_observed_mask"].to(device),
         )
         forecasts.append(outputs.sequences.cpu().numpy())
@@ -613,7 +653,7 @@ if __name__ == '__main__':
     mse_metrics.append(np.mean(mse_metrics))
     mae_metrics.append(np.mean(mae_metrics))
 
-    path = Path(os.path.basename(__file__).split('.')[0])
+    path = Path(os.path.basename(__file__).split('.')[0] + '_with_feature')
     path.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame({

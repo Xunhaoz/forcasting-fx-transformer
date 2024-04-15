@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/fx-forcasting.iml" filepath="$PROJECT_DIR$/.idea/fx-forcasting.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/forcasting-fx-transformer.iml" filepath="$PROJECT_DIR$/.idea/forcasting-fx-transformer.iml" />
     </modules>
   </component>
 </project>
